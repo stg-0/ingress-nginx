@@ -68,6 +68,8 @@ image: clean-image ## Build image for a particular arch.
 		--build-arg TARGETARCH="$(ARCH)" \
 		--build-arg COMMIT_SHA="$(COMMIT_SHA)" \
 		--build-arg BUILD_ID="$(BUILD_ID)" \
+		--build-arg LUAROCKS_VERSION=3.3.1 \
+		--build-arg LUAROCKS_SHA=837481e408f7c06b59befe7ec194537c657687d624894bca7f79034302141a34 \
 		-t $(REGISTRY)/controller:$(TAG) rootfs
 
 .PHONY: clean-image

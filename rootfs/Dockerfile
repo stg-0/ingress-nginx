@@ -36,8 +36,23 @@ WORKDIR  /etc/nginx
 RUN apk update \
   && apk upgrade \
   && apk add --no-cache \
-    diffutils \
+    diffutils make unzip \
   && rm -rf /var/cache/apk/*
+
+# JWT manipulation dependencies
+ARG LUAROCKS_VERSION
+ARG LUAROCKS_SHA
+
+RUN wget -O /tmp/luarocks.tgz \
+  https://github.com/luarocks/luarocks/archive/v${LUAROCKS_VERSION}.tar.gz \
+  && echo "${LUAROCKS_SHA} */tmp/luarocks.tgz" | sha256sum -c - \
+  && tar -C /tmp -xzf /tmp/luarocks.tgz \
+  && cd /tmp/luarocks* \
+  && ./configure \
+  && make install
+
+RUN  luarocks install lua-resty-jwt
+# End manipulation dependencies
 
 COPY --chown=www-data:www-data etc /etc
 COPY --chown=www-data:www-data ingress-controller /ingress-controller

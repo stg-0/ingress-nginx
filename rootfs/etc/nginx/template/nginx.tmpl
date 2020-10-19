@@ -66,6 +66,7 @@ http {
     {{ buildLuaSharedDictionaries $cfg $servers }}
 
     init_by_lua_block {
+        ngx.log(ngx.STDERR, '[STG] http block')
         collectgarbage("collect")
 
         -- init modules
@@ -1055,6 +1056,7 @@ stream {
         {{ end }}
 
         location {{ $path }} {
+
             {{ $ing := (getIngressInformation $location.Ingress $server.Hostname $location.Path) }}
             set $namespace      {{ $ing.Namespace | quote}};
             set $ingress_name   {{ $ing.Rule | quote }};
@@ -1143,6 +1145,108 @@ stream {
             auth_request        {{ $authPath }};
             auth_request_set    $auth_cookie $upstream_http_set_cookie;
             add_header          Set-Cookie $auth_cookie;
+
+            
+            ## Si existe la cookie de Stratio, sigo, sino hago la peticion a userinfo con la cookie del auth_request
+            ## Como firmo el jwt?? clave asimetrica (de un secret de k8s).
+
+            # Se accede en cada peticion al endpoint con oauth (no en la redireccion al provider para obtener el token)
+
+            access_by_lua_block {
+                ngx.log(ngx.STDERR, '[STG] Creating Stratio cookie')
+
+                -- ngx.log(ngx.STDERR, '[STG] oauth2-proxy cookie:', ngx.req.get_headers()["cookie"], ' [END]')
+
+                -- Start lua-resty-cookie block
+                -- https://github.com/cloudflare/lua-resty-cookie
+
+                local ck = require "resty.cookie"
+                local cookie, err = ck:new()
+                if not cookie then
+                    ngx.log(ngx.ERR, err)
+                    return
+                end
+
+                -- set one cookie if not already in req
+                local stratio_cookie, err = cookie:get("stratio-cookie")
+                if not stratio_cookie then
+                    -- get oauth2-proxy cookie
+                    local oauth2_cookie, err = cookie:get("_oauth2_proxy")
+                    if not oauth2_cookie then
+                        ngx.log(ngx.ERR, err)
+                        return
+                    end
+                    ngx.log(ngx.STDERR, '[STG] oauth2-proxy cookie: ', oauth2_cookie, ' [END]')
+                    
+                    --[[
+                    -- IMPORTANTE: Se establece una oauth2_cookie separada por | con 73 caracteres en su payload
+                    ngx.log(ngx.STDERR, '[STG] oauth2-proxy payload b64: ', string.sub(oauth2_cookie, 1, 72), ' [END]')
+
+                    -- TODO: Use a split function (gmatch, gsub, etc) to extract the first part of the oauth2_token
+                    -- local oauth2_payload = ngx.decode_base64(oauth2_cookie.split('|')[1])
+                    -- local oauth2_payload = ngx.decode_base64(string.gmatch(oauth2_cookie, "%w+")[1])
+
+                    local oauth2_payload = ngx.decode_base64(string.sub(oauth2_cookie, 1, 72))
+                    ngx.log(ngx.STDERR, '[STG] oauth2-proxy payload: ', oauth2_payload, ' [END]')
+                    ]]
+
+                    -- Create JWT
+                    local jwt = require "resty.jwt"
+                    local key = "example_key"
+
+                    --[[
+                    local stratio_payload = {
+                        iss = "stratio",
+                        nbf = os.time(),
+                        exp = os.time() + 21600,
+                    }
+                    ]]
+
+                    local stratio_payload = {
+                        iss = "stratio",
+                        nbf = os.time(),
+                        cn = "admin",
+                        exp = 1603167876,
+                        groups = {
+                            "manager_admin",
+                            "admin",
+                            "manager_installer",
+                            "stratio"
+                        },
+                        mail = "admin@k8s.stratio.com",
+                        tenant = "NONE",
+                        uid = "admin"
+                    }
+                    
+                    -- sign JWT
+                    local stratio_token = jwt:sign(
+                        key,
+                        {
+                            header={alg="HS256", kid="secret", typ="JWT"},
+                            payload=stratio_payload
+                        }
+                    )
+                    -- set cookie
+                    local ok, err = cookie:set({
+                        key = "stratio-cookie", value = stratio_token,
+                    })
+                    if not ok then
+                        ngx.log(ngx.ERR, err)
+                        return
+                    end
+                end
+
+                -- End lua-resty-cookie block
+
+                --[[
+                local h, err = ngx.req.get_headers()
+                for k, v in pairs(h) do
+                    ngx.log(ngx.STDERR, k)
+                    ngx.log(ngx.STDERR, v)
+                end
+                ]]
+            }
+
             {{- range $line := buildAuthResponseHeaders $externalAuth.ResponseHeaders }}
             {{ $line }}
             {{- end }}
