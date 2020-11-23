@@ -182,6 +182,7 @@ var (
 		"buildMirrorLocations":               buildMirrorLocations,
 		"shouldLoadAuthDigestModule":         shouldLoadAuthDigestModule,
 		"shouldLoadInfluxDBModule":           shouldLoadInfluxDBModule,
+		"getStratioKey":                      getStratioKey,
 	}
 )
 
@@ -410,6 +411,21 @@ func buildLocation(input interface{}, enforceRegex bool) string {
 	}
 
 	return path
+}
+
+// getStratioKey retrieves the signing key from a path
+//
+func getStratioKey() string {
+	var path = "/usr/local/stratio/signing_key"
+
+	key, err := ioutil.ReadFile(path)
+	if err != nil {
+		//return fmt.Sprintf(err, "unexpected error getting the stratio key from %v", path)
+		errors.Wrapf(err, "unexpected error getting the stratio key from %v", path)
+		return ""
+	}
+
+	return string(key)
 }
 
 func buildAuthLocation(input interface{}, globalExternalAuthURL string) string {

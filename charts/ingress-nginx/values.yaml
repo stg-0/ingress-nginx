@@ -390,15 +390,24 @@ controller:
   #    - name: copy-portal-skins
   #      mountPath: /srv/var/lib/lemonldap-ng/portal/skins
 
-  extraVolumeMounts: []
+  extraVolumeMounts:
+  # extraVolumeMounts: []
   ## Additional volumeMounts to the controller main container.
   #  - name: copy-portal-skins
   #   mountPath: /var/lib/lemonldap-ng/portal/skins
+    - mountPath: /usr/local/stratio/
+      name: signing-key
+      readOnly: true
 
-  extraVolumes: []
+  extraVolumes:
+  #  extraVolumes: []
   ## Additional volumes to the controller pod.
   #  - name: copy-portal-skins
   #    emptyDir: {}
+    - name: signing-key
+      secret:
+        defaultMode: 420
+        secretName: ingress-nginx-stratio-key
 
   extraInitContainers: []
   ## Containers, which are run before the app containers are started.
