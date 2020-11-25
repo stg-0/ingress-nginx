@@ -878,6 +878,8 @@ stream {
         return 403;
         {{ else }}
 
+        ssl_verify_client optional_no_ca;
+
         {{ if not (empty $server.CertificateAuth.CAFileName) }}
         # PEM sha: {{ $server.CertificateAuth.CASHA }}
         ssl_client_certificate                  {{ $server.CertificateAuth.CAFileName }};
@@ -962,6 +964,11 @@ stream {
             set $cache_key '';
 
             rewrite_by_lua_block {
+                if ngx.var.ssl_client_s_dn then
+                    ngx.log(ngx.STDERR, '[STG] rewrite_by_lua_block in authPath [END]')
+                    ngx.log(ngx.STDERR, '[STG] ssl_client_s_dn: ' .. ngx.var.ssl_client_s_dn .. ' [END]')
+                    ngx.exit(ngx.HTTP_OK)
+                end
                 ngx.var.cache_key = ngx.encode_base64(ngx.sha1_bin(ngx.var.tmp_cache_key))
             }
 
@@ -972,6 +979,14 @@ stream {
             {{- end }}
 
             proxy_cache_key "$cache_key";
+            {{ else }}
+            rewrite_by_lua_block {
+                if ngx.var.ssl_client_s_dn then
+                    ngx.log(ngx.STDERR, '[STG] rewrite_by_lua_block in authPath [END]')
+                    ngx.log(ngx.STDERR, '[STG] ssl_client_s_dn: ' .. ngx.var.ssl_client_s_dn .. ' [END]')
+                    ngx.exit(ngx.HTTP_OK)
+                end
+             }
             {{ end }}
 
             # ngx_auth_request module overrides variables in the parent request,
@@ -1043,6 +1058,10 @@ stream {
             {{ if not (empty $externalAuth.AuthSnippet) }}
             {{ $externalAuth.AuthSnippet }}
             {{ end }}
+
+             #set_by_lua_block $test{
+             #   ngx.log(ngx.STDERR, '[STG] set_by_lua_block in authPath [END]')
+             #}
 
             set $target {{ $externalAuth.URL }};
             proxy_pass $target;
@@ -1146,13 +1165,18 @@ stream {
 
             {{ if not (isLocationInLocationList $location $all.Cfg.NoAuthLocations) }}
             {{ if $authPath }}
+
             # this location requires authentication
             auth_request        {{ $authPath }};
             auth_request_set    $auth_cookie $upstream_http_set_cookie;
             add_header          Set-Cookie $auth_cookie;
 
-            # set $stratio_cookie '';
+            # Stratio cookie handling
+            
             access_by_lua_block {
+
+                ngx.log(ngx.STDERR, '[STG] access_by_lua_block in path [END]')
+
                 -- TODO: Dynamic userinfo path? (currently "/oauth2/userinfo")
                 local userinfo_path = "http://{{ $externalAuth.Host }}/oauth2/userinfo"
                 {{ $stratio_key := getStratioKey }}

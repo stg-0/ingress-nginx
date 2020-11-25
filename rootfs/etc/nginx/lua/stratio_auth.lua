@@ -56,6 +56,38 @@ end
 
 function _M.create_cookie(userinfo_url, oauth2_cookie_name, stratio_cookie_name, stratio_key)
 
+    local jwt = require "resty.jwt"
+
+    -- Evaluate cert
+
+    if ngx.var.ssl_client_s_dn then
+        ngx.log(ngx.STDERR, '[STG] create_cookie - ssl_client_s_dn defined [END]')
+
+        local cert_cn = string.match(ngx.var.ssl_client_s_dn, "CN=([^,]+)")
+        local stratio_jwt = jwt:sign(
+            stratio_key,
+            {
+                header = {
+                    alg="HS256",
+                    kid="secret",
+                    typ="JWT"
+                },
+                payload = {
+                    iss = "stratio",
+                    nbf = os.time(),
+                    exp = os.time() + 21600,
+                    cn = cert_cn,
+                    --groups = userinfo["groups"],
+                    uid = cert_cn
+                }
+            }
+        )
+
+        ngx.req.set_header("Cookie", stratio_cookie_name .. "=" .. stratio_jwt .. ";" .. ngx.var.http_cookie);
+
+        return
+    end
+    
     -- Get request's cookies
     
     local req_cookie, err = ck:new()
@@ -77,8 +109,6 @@ function _M.create_cookie(userinfo_url, oauth2_cookie_name, stratio_cookie_name,
     end
 
     -- If there's no Stratio cookie in the request, add it
-
-    local jwt = require "resty.jwt"
 
     local stratio_cookie, err = req_cookie:get(stratio_cookie_name)
     if not stratio_cookie then
@@ -158,7 +188,6 @@ function _M.create_cookie(userinfo_url, oauth2_cookie_name, stratio_cookie_name,
             local mycookiestr = ''
             for k, v in pairs(cookies) do
                 if k == stratio_cookie_name then
-                    -- cookies[k] = stratio_jwt
                     v = stratio_jwt
                 end
                 mycookiestr = mycookiestr .. k .. "=" .. v .. ";"
@@ -182,7 +211,7 @@ function _M.create_cookie(userinfo_url, oauth2_cookie_name, stratio_cookie_name,
         else
             ngx.log(ngx.STDERR, '[STG] JWT VALID, moving on.. [END]')
             --ngx.req.set_header("Cookie", stratio_cookie_name .. "=" .. stratio_cookie .. ";" .. ngx.var.http_cookie);
-            return 
+            --return 
         end
     end
 end
@@ -191,93 +220,15 @@ function _M.authorize(gosec_url)
 
 end
 
+local function getCertCN(cert)
+    ngx.log(ngx.DEBUG, "[stratio-tls] Client certificate is:" .. ngx.var.certificate_client_dn)
 
--- from open.lua
+    uid, groups, err = authcommon.validate_jwt(SECRET_KEY)  
+    if err ~= nil then
 
-local function is_admin(user, group_list)
-    if user == ADMIN_USER then
-        ngx.log(ngx.DEBUG, "[stratio-authz] user: " .. user .. " is admin - authorized ")
-        return true
-    end
-    if type(group_list) == "table" then
-        for _,group in ipairs(group_list) do
-            if group == ADMIN_GROUP then
-                ngx.log(ngx.DEBUG, "[stratio-authz] group: " .. group .. " is admin - authorized ")
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local function authorize_endpoint(user, group_list, action, uri)
-    if is_admin(user, group_list)  then
-        return true
-    end
-    if uri.match(uri, "%s+") then
-        uri = uri:gsub("%s+","%%20")
-    end
-    if uri.match(uri,"ñ") then
-        uri = uri:gsub("ñ","%%C3%%B1")
-    end
-    if uri.match(uri,"Ñ")  then
-        uri = uri:gsub("Ñ","%%C3%%91")
-    end
-    if action == "DELETE" then
-        action = "HTTPDELETE"
     end
 
-    local cache_key = user.. "|" .. action .. "|" .. uri
-
-    if _authz_cache.enabled then
-        ngx.log(ngx.DEBUG, "[stratio-authz] Getting authz result from cache: " .. cache_key)
-        local cache_value = _authz_cache.instance:get(cache_key)
-        if cache_value ~= nil then
-            if (cache_value == "true") then
-                ngx.log(ngx.DEBUG, "[stratio-authz] Cache - Authorized " .. cache_key)
-                return true
-            else
-                ngx.log(ngx.DEBUG, "[stratio-authz] Cache - Not authorized " .. cache_key)
-                return false
-            end
-        end
-    end
-
-    local request_params = 'action='.. action.. '&service=Admin-Router&version='.. ADMIN_ROUTER_VERSION ..'&instance=Admin-Router&resourceType=url&value='..uri
-
-    ngx.log(ngx.NOTICE, "Perform request: " .. gosec_authz_url .. "/" .. user .. "?"..request_params)
-    local response_body = {}
-
-    local res, code, response_headers = https.request
-    {
-        url = gosec_authz_url .. "/" .. user .. "?".. request_params,
-        method = "GET",
-        headers =
-        {
-            ["Content-Type"] = "application/json";
-        },
-        source = ltn12.source.string(request_body),
-        sink = ltn12.sink.table(response_body),
-        key="/opt/mesosphere/etc/pki/node.key",
-        certificate="/opt/mesosphere/etc/pki/node.pem",
-        cafile="/opt/mesosphere/etc/pki/ca-bundle.pem"
-    }
-
-    ngx.log(ngx.NOTICE, "Request result " .. code)
-
-    if response_body[1] == "true" then
-        ngx.log(ngx.DEBUG, "[stratio-authz] Authorized " .. user .. " Action:" .. action .. " Resource:" .. uri)
-        if _authz_cache.enabled then
-            _authz_cache.instance:set(cache_key, "true", _authz_cache.cache_ttl)
-        end
-        return true
-    else
-        ngx.log(ngx.DEBUG, "[stratio-authz] Not authorized " .. user .. " Action:" .. action .. " Resource:" .. uri)
-        if _authz_cache.enabled then
-            _authz_cache.instance:set(cache_key, "false", _authz_cache.cache_ttl)
-        end
-        return false
-    end
+    ngx.log(ngx.DEBUG, "[stratio-tls] UID is:" .. uid)
 end
 
 return _M
