@@ -52,7 +52,7 @@ RUN wget -O /tmp/luarocks.tgz \
   && make install
 
 RUN  luarocks install lua-resty-jwt
-# End manipulation dependencies
+# End JWT manipulation dependencies
 
 COPY --chown=www-data:www-data etc /etc
 COPY --chown=www-data:www-data ingress-controller /ingress-controller

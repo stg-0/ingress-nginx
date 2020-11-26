@@ -1163,16 +1163,7 @@ stream {
                     return 500
                 {{ end }}
             }
-            # TODO: Only when not set in request?
-            # proxy_set_header    Host        $http_host;
             
-            # Cookie (from client to server) can only contain key=value pairs separated by semi-colons
-            #proxy_set_header    Cookie      "$stratio_cookie; ${http_cookie}"; 
-
-            # Set-Cookie (from server to client) can contain other fields separated by semi-colons,
-            # and cookies are separated by commas
-            #add_header          Set-Cookie  "$stratio_cookie; Domain={{ $server.Hostname }}";
-
             {{- range $line := buildAuthResponseHeaders $externalAuth.ResponseHeaders }}
             {{ $line }}
             {{- end }}
